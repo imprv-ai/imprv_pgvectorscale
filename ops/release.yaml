@@ -17,8 +17,8 @@ steps:
       defaults:
         part: patch
         pg_version: '17'
-        multiarch: false
-        push: true
+        multiarch: 'false'
+        push: 'true'
 
   # 1) Bump wersji w Poetry
   - name: pypyr.steps.shell
@@ -27,7 +27,6 @@ steps:
       cmd:
         - |
           set -e
-          cd ..
           echo ">>> Bumping version: {part}"
           poetry version {part}
           VERSION=$(poetry version --short)
@@ -37,15 +36,17 @@ steps:
   - name: pypyr.steps.pype
     description: Build Docker images
     in:
-      pype: ops/build
-      multiarch: '{multiarch}'
-      push: '{push}'
+      pype:
+        name: ops/build
+        useParentContext: true
 
   # 3) Push
   - name: pypyr.steps.pype
     description: Push Docker images
     in:
-      pype: ops/push
+      pype:
+        name: ops/push
+        useParentContext: true
 
   # 4) CHANGELOG + commit + tag + push
   - name: pypyr.steps.shell
@@ -54,7 +55,6 @@ steps:
       cmd:
         - |
           set -e
-          cd ..
 
           VERSION=$(poetry version --short)
           DATE=$(date +%Y-%m-%d)

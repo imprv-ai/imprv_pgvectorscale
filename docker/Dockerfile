@@ -25,10 +25,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     pkg-config \
     libssl-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone pgvectorscale
-RUN git clone https://github.com/timescale/pgvectorscale.git /tmp/pgvectorscale \
+# Update CA certificates and clone pgvectorscale
+RUN update-ca-certificates && \
+    git clone https://github.com/timescale/pgvectorscale.git /tmp/pgvectorscale \
     && cd /tmp/pgvectorscale \
     && git checkout "${VECTORSCALE_REF}"
 

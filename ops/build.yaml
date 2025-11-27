@@ -19,8 +19,8 @@ steps:
         image_name: imprvai/imprv_pgvectorscale
         pg_version: '17'
         vectorscale_ref: '0.9.0'
-        multiarch: false
-        push: false
+        multiarch: 'false'
+        push: 'false'
 
   - name: pypyr.steps.py
     description: Read version from Poetry

@@ -45,17 +45,6 @@ steps:
 
         save('app_version', 'tag_pg_versioned', 'tag_pg_latest')
 
-  - name: pypyr.steps.shell
-    description: Verify Docker login
-    in:
-      cmd:
-        - |
-          set -e
-          if ! docker info 2>/dev/null | grep -q "Username"; then
-            echo "ERROR: Not logged in to Docker Hub. Please run: docker login"
-            exit 1
-          fi
-          echo ">>> Docker login verified"
 
   - name: pypyr.steps.shell
     description: Push Docker images

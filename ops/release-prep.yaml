@@ -5,10 +5,18 @@ context_parser: pypyr.parser.keyvaluepairs
 steps:
   - pypyr.steps.debug
 
-  - name: pypyr.steps.set
+  # Load config from ops/config.yaml (single place to customize)
+  # Values from config.yaml can be overridden by CLI args
+  - name: pypyr.steps.fetchyaml
     in:
-      set:
-        part: '{part:patch}'
+      fetchYaml:
+        path: ops/config.yaml
+
+  # Set defaults if not already set (from config or CLI)
+  - name: pypyr.steps.default
+    in:
+      defaults:
+        part: patch
 
   # 1) Bump wersji w Poetry
   - name: pypyr.steps.shell
@@ -17,7 +25,6 @@ steps:
       cmd:
         - |
           set -e
-          cd ..
           echo ">>> Bumping version: {part}"
           poetry version {part}
           VERSION=$(poetry version --short)
@@ -30,7 +37,6 @@ steps:
       cmd:
         - |
           set -e
-          cd ..
 
           VERSION=$(poetry version --short)
           DATE=$(date +%Y-%m-%d)
