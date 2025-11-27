@@ -1,0 +1,11 @@
+# ops/config.yaml
+# Central configuration file for pypyr pipelines
+# Customize these values as needed
+
+registry: docker.io
+image_name: imprvai/imprv_pgvectorscale
+pg_version: '17'
+vectorscale_ref: 'v0.2.0'
+multiarch: false
+push: false
+

@@ -1,0 +1,140 @@
+name: Build and Test on Pull Request
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'docker/**'
+      - '.github/workflows/**'
+      - 'pyproject.toml'
+      - 'ops/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: |
+          pip install poetry
+
+      - name: Get version from Poetry
+        id: ver
+        run: |
+          VERSION=$(poetry version --short)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building image with version: $VERSION"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: imprvai/imprv_pgvectorscale:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            APP_VERSION=${{ steps.ver.outputs.version }}
+            VECTORSCALE_REF=v0.2.0
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.pushed_at }}
+
+      - name: Test PostgreSQL startup
+        run: |
+          echo ">>> Starting PostgreSQL container for testing"
+          docker run -d \
+            --name test-pg-pr-${{ github.event.pull_request.number }} \
+            -e POSTGRES_PASSWORD=testpass \
+            -e POSTGRES_DB=testdb \
+            imprvai/imprv_pgvectorscale:pr-${{ github.event.pull_request.number }}
+
+          echo ">>> Waiting for PostgreSQL to be ready..."
+          timeout=60
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            if docker exec test-pg-pr-${{ github.event.pull_request.number }} pg_isready -U postgres > /dev/null 2>&1; then
+              echo ">>> PostgreSQL is ready!"
+              break
+            fi
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+
+          if [ $elapsed -ge $timeout ]; then
+            echo "ERROR: PostgreSQL failed to start within $timeout seconds"
+            docker logs test-pg-pr-${{ github.event.pull_request.number }}
+            exit 1
+          fi
+
+      - name: Test extensions availability
+        run: |
+          echo ">>> Testing extensions availability"
+          docker exec test-pg-pr-${{ github.event.pull_request.number }} \
+            psql -U postgres -d testdb -c "
+              SELECT name, default_version, installed_version 
+              FROM pg_available_extensions 
+              WHERE name IN ('vector', 'vectorscale');
+            "
+
+          echo ">>> Verifying extensions can be installed"
+          docker exec test-pg-pr-${{ github.event.pull_request.number }} \
+            psql -U postgres -d testdb -c "
+              CREATE EXTENSION IF NOT EXISTS vector;
+              CREATE EXTENSION IF NOT EXISTS vectorscale;
+            "
+
+          echo ">>> Verifying extensions are installed"
+          docker exec test-pg-pr-${{ github.event.pull_request.number }} \
+            psql -U postgres -d testdb -c "
+              SELECT extname, extversion 
+              FROM pg_extension 
+              WHERE extname IN ('vector', 'vectorscale');
+            " | grep -E "(vector|vectorscale)" || {
+            echo "ERROR: Extensions not found in pg_extension"
+            exit 1
+          }
+
+      - name: Test vectorscale preload
+        run: |
+          echo ">>> Verifying vectorscale is preloaded"
+          docker exec test-pg-pr-${{ github.event.pull_request.number }} \
+            psql -U postgres -d testdb -c "
+              SHOW shared_preload_libraries;
+            " | grep -i vectorscale || {
+            echo "WARNING: vectorscale not found in shared_preload_libraries"
+            echo "This might be expected if using POSTGRESQL_CONF_PRELOAD_LIBRARIES env var"
+          }
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker stop test-pg-pr-${{ github.event.pull_request.number }} || true
+          docker rm test-pg-pr-${{ github.event.pull_request.number }} || true
+
+      - name: Build summary
+        if: success()
+        run: |
+          echo "### ✅ Build and Test Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`imprvai/imprv_pgvectorscale:pr-${{ github.event.pull_request.number }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** \`${{ steps.ver.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All tests passed: PostgreSQL startup, extensions availability, and installation verified." >> $GITHUB_STEP_SUMMARY
+

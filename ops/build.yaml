@@ -1,0 +1,64 @@
+# ops/build.yaml
+context_parser: pypyr.parser.keyvaluepairs
+
+steps:
+  - pypyr.steps.debug
+
+  # Load config from ops/config.yaml (single place to customize)
+  # Values from config.yaml can be overridden by CLI args
+  - name: pypyr.steps.fetchyaml
+    in:
+      fetchYaml:
+        path: ops/config.yaml
+
+  # Set defaults if not already set (from config or CLI)
+  - name: pypyr.steps.default
+    in:
+      defaults:
+        registry: docker.io
+        image_name: imprvai/imprv_pgvectorscale
+        pg_version: '17'
+        vectorscale_ref: 'v0.2.0'
+        multiarch: false
+        push: false
+
+  - name: pypyr.steps.py
+    description: Read version from Poetry
+    in:
+      py: |
+        import subprocess
+        import os
+
+        # Pipeline runs from project root (where pyproject.toml is)
+        # But if running from ops/, go up one level
+        cwd = os.getcwd()
+        if os.path.basename(cwd) == 'ops':
+          cwd = os.path.dirname(cwd)
+
+        result = subprocess.run(
+          ['poetry', 'version', '--short'],
+          cwd=cwd,
+          capture_output=True,
+          text=True,
+        )
+        if result.returncode != 0:
+          raise Exception(f"poetry version failed: {result.stderr}")
+
+        app_version = result.stdout.strip()
+        tag_pg_versioned = f"{pg_version}-v{app_version}"
+        tag_pg_latest = f"{pg_version}-latest"
+
+        # zapisujemy do contextu – będą użyte w shellu
+        save('app_version', 'tag_pg_versioned', 'tag_pg_latest')
+
+  - name: pypyr.steps.shell
+    description: Build Docker image (single-arch or multi-arch based on flag)
+    in:
+      cmd:
+        - |
+          set -e
+
+          GIT_SHA=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          if

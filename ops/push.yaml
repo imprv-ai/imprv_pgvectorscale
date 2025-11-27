@@ -1,0 +1,74 @@
+# ops/push.yaml
+context_parser: pypyr.parser.keyvaluepairs
+
+steps:
+  - pypyr.steps.debug
+
+  # Load config from ops/config.yaml (single place to customize)
+  # Values from config.yaml can be overridden by CLI args
+  - name: pypyr.steps.fetchyaml
+    in:
+      fetchYaml:
+        path: ops/config.yaml
+
+  # Set defaults if not already set (from config or CLI)
+  - name: pypyr.steps.default
+    in:
+      defaults:
+        registry: docker.io
+        image_name: imprvai/imprv_pgvectorscale
+        pg_version: '17'
+
+  - name: pypyr.steps.py
+    description: Read version from Poetry
+    in:
+      py: |
+        import subprocess
+        import os
+
+        # Pipeline runs from project root (where pyproject.toml is)
+        # But if running from ops/, go up one level
+        cwd = os.getcwd()
+        if os.path.basename(cwd) == 'ops':
+          cwd = os.path.dirname(cwd)
+
+        result = subprocess.run(
+          ['poetry', 'version', '--short'],
+          cwd=cwd,
+          capture_output=True,
+          text=True,
+        )
+        if result.returncode != 0:
+          raise Exception(f"poetry version failed: {result.stderr}")
+
+        app_version = result.stdout.strip()
+        tag_pg_versioned = f"{pg_version}-v{app_version}"
+        tag_pg_latest = f"{pg_version}-latest"
+
+        # zapisujemy do contextu, żeby kolejne kroki widziały te zmienne
+        save('app_version', 'tag_pg_versioned', 'tag_pg_latest')
+
+  - name: pypyr.steps.shell
+    description: Verify Docker login
+    in:
+      cmd:
+        - |
+          set -e
+          if ! docker info 2>/dev/null | grep -q "Username"; then
+            echo "ERROR: Not logged in to Docker Hub. Please run: docker login"
+            exit 1
+          fi
+          echo ">>> Docker login verified"
+
+  - name: pypyr.steps.shell
+    description: Push Docker images
+    in:
+      cmd:
+        - |
+          set -e
+
+          echo ">>> Pushing {registry}/{image_name}:{tag_pg_versioned}"
+          docker push {registry}/{image_name}:{tag_pg_versioned}
+
+          echo ">>> Pushing {registry}/{image_name}:{tag_pg_latest}"
+          docker push {registry}/{image_name}:{tag_pg_latest}

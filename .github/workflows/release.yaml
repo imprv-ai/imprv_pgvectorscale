@@ -1,0 +1,94 @@
+name: Release Docker image (multi-arch)
+
+on:
+  workflow_dispatch:
+    inputs:
+      part:
+        description: "Which part of version to bump (major/minor/patch)"
+        required: true
+        default: "patch"
+
+permissions:
+  contents: write    # commit + tag + push
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Configure git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry & Pypyr
+        run: |
+          pip install poetry pypyr
+
+      - name: Install dependencies (optional)
+        run: |
+          poetry install --no-root || echo "No deps to install"
+
+      # 1) Prepare release: bump version, changelog, commit, tag (NO build/push)
+      - name: Prepare release (version bump, changelog, commit, tag)
+        run: |
+          pypyr release-prep part=${{ github.event.inputs.part }}
+
+      # 2) Get version after bump
+      - name: Get version from Poetry
+        id: ver
+        run: |
+          VERSION=$(poetry version --short)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building multi-arch image for version: $VERSION"
+
+      # 3) Login to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 4) Set up QEMU for multi-arch builds
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 5) Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 6) Build & push multi-arch image (amd64 + arm64)
+      - name: Build & push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            APP_VERSION=${{ steps.ver.outputs.version }}
+            VECTORSCALE_REF=v0.2.0
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.pushed_at }}
+          tags: |
+            docker.io/imprvai/imprv_pgvectorscale:17-v${{ steps.ver.outputs.version }}
+            docker.io/imprvai/imprv_pgvectorscale:17-latest
+
+      # 7) Push commit and tag to repository
+      - name: Push commit and tag
+        run: |
+          git push || echo "git push failed (may already be pushed)"
+          git push --tags || echo "git push --tags failed (may already be pushed)"

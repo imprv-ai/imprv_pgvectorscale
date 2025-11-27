@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "imprv_pgvectorscale"
+version = "0.1.0"
+description = "PostgreSQL 17 image with pgvector and pgvectorscale for imprv.ai"
+authors = ["jslowik <jas.slowik@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pypyr = "5.9.1"
+
+[tool.poetry.group.dev.dependencies]
+# pytest = "^8.0.0"
+# black = "^24.0.0"
+
+[tool.pypyr.shortcuts]
+build = { pipeline_name = "ops/build" }
+push = { pipeline_name = "ops/push" }
+release = { pipeline_name = "ops/release" }
+release-prep = { pipeline_name = "ops/release-prep" }
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

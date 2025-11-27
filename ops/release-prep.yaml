@@ -1,0 +1,71 @@
+# ops/release-prep.yaml
+# Prepares release: bump version, changelog, commit, tag (NO build/push)
+context_parser: pypyr.parser.keyvaluepairs
+
+steps:
+  - pypyr.steps.debug
+
+  - name: pypyr.steps.set
+    in:
+      set:
+        part: '{part:patch}'
+
+  # 1) Bump wersji w Poetry
+  - name: pypyr.steps.shell
+    description: Bump version with Poetry
+    in:
+      cmd:
+        - |
+          set -e
+          cd ..
+          echo ">>> Bumping version: {part}"
+          poetry version {part}
+          VERSION=$(poetry version --short)
+          echo "New version: $VERSION"
+
+  # 2) CHANGELOG + commit + tag (no push - will be done by CI)
+  - name: pypyr.steps.shell
+    description: Update changelog, commit, tag
+    in:
+      cmd:
+        - |
+          set -e
+          cd ..
+
+          VERSION=$(poetry version --short)
+          DATE=$(date +%Y-%m-%d)
+          CHANGELOG_FILE="CHANGELOG.md"
+
+          echo ">>> Generating changelog for v$VERSION"
+
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          TMP=$(mktemp)
+          echo "## v$VERSION - $DATE" >> "$TMP"
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "(changes since $PREV_TAG)" >> "$TMP"
+            echo >> "$TMP"
+            git log --pretty=format:"- %s (%h)" "$PREV_TAG"..HEAD >> "$TMP"
+          else
+            echo "(initial release)" >> "$TMP"
+            echo >> "$TMP"
+            git log --pretty=format:"- %s (%h)" >> "$TMP"
+          fi
+
+          echo >> "$TMP"
+          echo >> "$TMP"
+
+          if [ -f "$CHANGELOG_FILE" ]; then
+            cat "$CHANGELOG_FILE" >> "$TMP"
+          fi
+
+          mv "$TMP" "$CHANGELOG_FILE"
+
+          echo ">>> Committing version bump & changelog"
+          git add pyproject.toml "$CHANGELOG_FILE"
+          git commit -m "release: v$VERSION" || echo "No changes to commit"
+
+          echo ">>> Creating git tag v$VERSION"
+          git tag "v$VERSION" || echo "Tag already exists"
+
