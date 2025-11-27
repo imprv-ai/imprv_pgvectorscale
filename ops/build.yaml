@@ -41,6 +41,7 @@ steps:
           capture_output=True,
           text=True,
         )
+
         if result.returncode != 0:
           raise Exception(f"poetry version failed: {result.stderr}")
 
@@ -48,7 +49,7 @@ steps:
         tag_pg_versioned = f"{pg_version}-v{app_version}"
         tag_pg_latest = f"{pg_version}-latest"
 
-        # zapisujemy do contextu – będą użyte w shellu
+        # Persist to context for later steps
         save('app_version', 'tag_pg_versioned', 'tag_pg_latest')
 
   - name: pypyr.steps.shell
@@ -58,7 +59,64 @@ steps:
         - |
           set -e
 
-          GIT_SHA=$(git rev-parse --short HEAD)
+          # If running from ops/, go to project root
+          if [ "$(basename "$PWD")" = "ops" ]; then
+            cd ..
+          fi
+
+          GIT_SHA=$(git rev-parse --short HEAD || echo "nogit")
           BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          if
+          if [ "{multiarch}" = "true" ]; then
+            echo ">>> Building MULTI-ARCH Docker image for version {app_version}"
+            echo ">>> Platforms: linux/amd64,linux/arm64"
+
+            # Check if buildx is available
+            if ! docker buildx version > /dev/null 2>&1; then
+              echo "ERROR: docker buildx is required for multi-arch builds"
+              echo "Install Docker Buildx or use single-arch build (default)"
+              exit 1
+            fi
+
+            # Create buildx builder if it doesn't exist
+            docker buildx create --name multiarch-builder --use 2>/dev/null || docker buildx use multiarch-builder || true
+
+            # For multi-arch, we need to push (can't use --load for multi-arch)
+            if [ "{push}" = "true" ]; then
+              echo ">>> Pushing multi-arch images to registry"
+              BUILDX_FLAGS="--push"
+            else
+              echo ">>> WARNING: Multi-arch builds require --push (images will be pushed to registry)"
+              echo ">>> Set push=true or use single-arch build for local-only images"
+              BUILDX_FLAGS="--push"
+            fi
+
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --build-arg VECTORSCALE_REF={vectorscale_ref} \
+              --build-arg APP_VERSION={app_version} \
+              --build-arg VCS_REF=$GIT_SHA \
+              --build-arg BUILD_DATE=$BUILD_DATE \
+              -t {registry}/{image_name}:{tag_pg_versioned} \
+              -t {registry}/{image_name}:{tag_pg_latest} \
+              -f docker/Dockerfile \
+              docker/
+          else
+            echo ">>> Building SINGLE-ARCH Docker image for version {app_version}"
+            echo ">>> Platform: current platform only"
+            echo ">>> Use multiarch=true for multi-arch builds"
+
+            echo "Tags:"
+            echo "  {registry}/{image_name}:{tag_pg_versioned}"
+            echo "  {registry}/{image_name}:{tag_pg_latest}"
+
+            docker build \
+              --build-arg VECTORSCALE_REF={vectorscale_ref} \
+              --build-arg APP_VERSION={app_version} \
+              --build-arg VCS_REF=$GIT_SHA \
+              --build-arg BUILD_DATE=$BUILD_DATE \
+              -t {registry}/{image_name}:{tag_pg_versioned} \
+              -t {registry}/{image_name}:{tag_pg_latest} \
+              -f docker/Dockerfile \
+              docker/
+          fi

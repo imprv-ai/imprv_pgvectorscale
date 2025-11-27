@@ -4,8 +4,7 @@ context_parser: pypyr.parser.keyvaluepairs
 steps:
   - pypyr.steps.debug
 
-  # Load config from ops/config.yaml (single place to customize)
-  # Values from config.yaml can be overridden by CLI args
+  # Load config from ops/config.yaml
   - name: pypyr.steps.fetchyaml
     in:
       fetchYaml:
@@ -26,8 +25,6 @@ steps:
         import subprocess
         import os
 
-        # Pipeline runs from project root (where pyproject.toml is)
-        # But if running from ops/, go up one level
         cwd = os.getcwd()
         if os.path.basename(cwd) == 'ops':
           cwd = os.path.dirname(cwd)
@@ -38,6 +35,7 @@ steps:
           capture_output=True,
           text=True,
         )
+
         if result.returncode != 0:
           raise Exception(f"poetry version failed: {result.stderr}")
 
@@ -45,7 +43,6 @@ steps:
         tag_pg_versioned = f"{pg_version}-v{app_version}"
         tag_pg_latest = f"{pg_version}-latest"
 
-        # zapisujemy do contextu, żeby kolejne kroki widziały te zmienne
         save('app_version', 'tag_pg_versioned', 'tag_pg_latest')
 
   - name: pypyr.steps.shell
@@ -66,6 +63,11 @@ steps:
       cmd:
         - |
           set -e
+
+          # If running from ops/, go to project root
+          if [ "$(basename "$PWD")" = "ops" ]; then
+            cd ..
+          fi
 
           echo ">>> Pushing {registry}/{image_name}:{tag_pg_versioned}"
           docker push {registry}/{image_name}:{tag_pg_versioned}

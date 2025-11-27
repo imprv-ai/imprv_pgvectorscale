@@ -1,7 +1,7 @@
 # --- Stage 1: builder --------------------------------------------------------
 FROM pgvector/pgvector:0.8.1-pg17-trixie AS builder
 
-ARG VECTORSCALE_REF=v0.2.0
+ARG VECTORSCALE_REF=0.9.0
 ARG APP_VERSION=0.1.0
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
