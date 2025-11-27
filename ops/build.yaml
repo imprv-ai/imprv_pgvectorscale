@@ -67,7 +67,7 @@ steps:
           GIT_SHA=$(git rev-parse --short HEAD || echo "nogit")
           BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          if [ "{multiarch}" = "true" ]; then
+          if [ "{multiarch}" = "true" ] || [ "{multiarch}" = "True" ]; then
             echo ">>> Building MULTI-ARCH Docker image for version {app_version}"
             echo ">>> Platforms: linux/amd64,linux/arm64"
 
