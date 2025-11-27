@@ -33,7 +33,9 @@ jobs:
         id: ver
         run: |
           VERSION=$(poetry version --short)
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
           echo "Building image with version: $VERSION"
 
       - name: Set up Docker Buildx
@@ -51,9 +53,9 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             APP_VERSION=${{ steps.ver.outputs.version }}
-            VECTORSCALE_REF=v0.2.0
+            VECTORSCALE_REF=0.9.0
             VCS_REF=${{ github.sha }}
-            BUILD_DATE=${{ github.event.repository.pushed_at }}
+            BUILD_DATE=${{ steps.ver.outputs.build_date }}
 
       - name: Test PostgreSQL startup
         run: |
