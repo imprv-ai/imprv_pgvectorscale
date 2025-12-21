@@ -16,7 +16,7 @@ steps:
     in:
       defaults:
         part: patch
-        pg_version: '17'
+        pg_version: '18'
         multiarch: 'false'
         push: 'true'
 

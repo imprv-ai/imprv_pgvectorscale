@@ -4,7 +4,7 @@
 
 registry: docker.io
 image_name: imprvai/imprv_pgvectorscale
-pg_version: '17'
+pg_version: '18'
 vectorscale_ref: '0.9.0'
 multiarch: 'false'
 push: 'false'
