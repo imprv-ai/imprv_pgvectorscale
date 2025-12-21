@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "imprv_pgvectorscale"
-version = "0.1.7"
+version = "0.0.1"
 description = "PostgreSQL 18 image with pgvector and pgvectorscale for imprv.ai"
 authors = ["IMPRV TEAM <dev@imprv.ai>"]
 readme = "README.md"
