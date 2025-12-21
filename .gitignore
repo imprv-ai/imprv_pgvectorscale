@@ -58,5 +58,3 @@ poetry.lock
 # Local test files
 test-data/
 *.test
-
-.venv/
