@@ -59,3 +59,4 @@ poetry.lock
 test-data/
 *.test
 
+.venv/
