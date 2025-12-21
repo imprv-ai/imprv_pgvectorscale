@@ -1,11 +1,11 @@
 # imprv_pgvectorscale
 
-A Docker image providing PostgreSQL 17 with vector extensions for AI/ML workloads.
+A Docker image providing PostgreSQL 18 with vector extensions for AI/ML workloads.
 
 ## 🚀 Features
 
-- **PostgreSQL 17** - Latest stable PostgreSQL version
-- **pgvector** - Vector similarity search (from `pgvector/pgvector:0.8.1-pg17-trixie`)
+- **PostgreSQL 18** - Latest stable PostgreSQL version
+- **pgvector** - Vector similarity search (from `pgvector/pgvector:0.8.1-pg18-trixie`)
 - **pgvectorscale** - Time-series vector compression (built from source)
 - **Semantic versioning** - Managed via Poetry
 - **Local automation** - Via pypyr workflows
@@ -15,13 +15,13 @@ A Docker image providing PostgreSQL 17 with vector extensions for AI/ML workload
 
 | Tag | Description |
 |-----|-------------|
-| `17-vX.Y.Z` | Versioned release bound to PostgreSQL 17 |
-| `17-latest` | Latest stable release for PostgreSQL 17 |
+| `18-vX.Y.Z` | Versioned release bound to PostgreSQL 18 |
+| `18-latest` | Latest stable release for PostgreSQL 18 |
 
 ### Examples
 ```bash
-docker.io/imprvai/imprv_pgvectorscale:17-v0.1.0
-docker.io/imprvai/imprv_pgvectorscale:17-latest
+docker.io/imprvai/imprv_pgvectorscale:18-v0.1.0
+docker.io/imprvai/imprv_pgvectorscale:18-latest
 ```
 
 ## 🏃 Quick Start
@@ -30,7 +30,7 @@ docker.io/imprvai/imprv_pgvectorscale:17-latest
 docker run --rm -it \
   -e POSTGRES_PASSWORD=secret \
   -p 5432:5432 \
-  docker.io/imprvai/imprv_pgvectorscale:17-latest
+  docker.io/imprvai/imprv_pgvectorscale:18-latest
 ```
 
 ### First Run Setup
@@ -75,8 +75,8 @@ This automated workflow will:
 
 1. **Bump version** in `pyproject.toml` using Poetry
 2. **Build** Docker images with tags:
-   - `17-vX.Y.Z`
-   - `17-latest`
+   - `18-vX.Y.Z`
+   - `18-latest`
 3. **Push** images to Docker Hub
 4. **Update** `CHANGELOG.md` with commits since previous tag
 5. **Commit** `pyproject.toml` and `CHANGELOG.md`
@@ -152,8 +152,8 @@ pypyr release part=patch multiarch=true
 3. **Push commit & tag** to repository
 
 **Tags pushed:**
-   - `17-vX.Y.Z`
-   - `17-latest`
+   - `18-vX.Y.Z`
+   - `18-latest`
 
 > **Note:** 
 > - CI/CD always builds and pushes **multi-arch** images (amd64 + arm64)

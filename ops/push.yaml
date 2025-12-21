@@ -16,7 +16,7 @@ steps:
       defaults:
         registry: docker.io
         image_name: imprvai/imprv_pgvectorscale
-        pg_version: '17'
+        pg_version: '18'
 
   - name: pypyr.steps.py
     description: Read version from Poetry
