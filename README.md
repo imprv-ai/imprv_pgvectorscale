@@ -67,7 +67,6 @@ version = "X.Y.Z"
 Bump version locally:
 
 ```bash
-cd ops
 pypyr release part=patch  # or part=minor / part=major
 ```
 
