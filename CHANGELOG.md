@@ -1,3 +1,8 @@
+## v0.0.3 - 2025-12-23
+(changes since v0.0.1)
+
+
+
 ## v0.0.1 - 2025-12-21
 (initial release)
 
