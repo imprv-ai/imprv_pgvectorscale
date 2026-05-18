@@ -12,15 +12,27 @@ permissions:
   contents: write    # commit + tag + push
   packages: write
 
-jobs:
-  release:
-    runs-on: ubuntu-latest
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: imprvai/imprv_pgvectorscale
+  PG_VERSION: "18"
 
+jobs:
+  # ------------------------------------------------------------------
+  # 1) Bump version, regenerate CHANGELOG, commit, tag, push
+  # ------------------------------------------------------------------
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      build_date: ${{ steps.ver.outputs.build_date }}
+      release_sha: ${{ steps.push.outputs.release_sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: true
+          fetch-depth: 0    # needed for changelog "since last tag"
 
       - name: Configure git user
         run: |
@@ -33,64 +45,137 @@ jobs:
           python-version: "3.11"
 
       - name: Install Poetry & Pypyr
-        run: |
-          pip install poetry pypyr
+        run: pip install poetry pypyr
 
-      - name: Install dependencies (optional)
-        run: |
-          poetry install --no-root || echo "No deps to install"
+      - name: Bump version, update changelog, commit, tag
+        run: pypyr release-prep part=${{ github.event.inputs.part }}
 
-      # 1) Prepare release: bump version, changelog, commit, tag (NO build/push)
-      - name: Prepare release (version bump, changelog, commit, tag)
+      - name: Push commit and tag
+        id: push
         run: |
-          pypyr release-prep part=${{ github.event.inputs.part }}
+          git push
+          git push --tags
+          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      # 2) Get version after bump and build date
-      - name: Get version from Poetry
+      - name: Capture version & build date
         id: ver
         run: |
           VERSION=$(poetry version --short)
           BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
-          echo "Building multi-arch image for version: $VERSION"
+          echo ">>> Will build version: $VERSION"
 
-      # 3) Login to Docker Hub
+  # ------------------------------------------------------------------
+  # 2) Build per-platform on NATIVE runners (no QEMU)
+  #    Each job pushes an unnamed image by digest only.
+  # ------------------------------------------------------------------
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch_slug: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch_slug: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout (release commit)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4) Set up QEMU for multi-arch builds
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      # 5) Set up Docker Buildx
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # 6) Build & push multi-arch image (amd64 + arm64)
-      - name: Build & push multi-arch image
+      - name: Build & push by digest (${{ matrix.platform }})
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: docker
           file: docker/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          provenance: false    # avoid extra unknown/unknown attestation manifests
+          cache-from: type=gha,scope=${{ matrix.arch_slug }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch_slug }}
           build-args: |
-            APP_VERSION=${{ steps.ver.outputs.version }}
+            APP_VERSION=${{ needs.prepare.outputs.version }}
             VECTORSCALE_REF=0.9.0
-            VCS_REF=${{ github.sha }}
-            BUILD_DATE=${{ steps.ver.outputs.build_date }}
-          tags: |
-            docker.io/imprvai/imprv_pgvectorscale:17-v${{ steps.ver.outputs.version }}
-            docker.io/imprvai/imprv_pgvectorscale:17-latest
+            VCS_REF=${{ needs.prepare.outputs.release_sha }}
+            BUILD_DATE=${{ needs.prepare.outputs.build_date }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 
-      # 7) Push commit and tag to repository
-      - name: Push commit and tag
+      - name: Export digest
         run: |
-          git push || echo "git push failed (may already be pushed)"
-          git push --tags || echo "git push --tags failed (may already be pushed)"
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          echo "$digest" > "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch_slug }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ------------------------------------------------------------------
+  # 3) Combine per-arch digests into ONE multi-arch manifest list
+  #    and tag it as 18-vX.Y.Z + 18-latest
+  # ------------------------------------------------------------------
+  merge:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          TAG_VERSIONED="${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-v${VERSION}"
+          TAG_LATEST="${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-latest"
+
+          # Each filename in /tmp/digests is a digest sans the "sha256:" prefix.
+          REFS=$(printf "${REGISTRY}/${IMAGE_NAME}@sha256:%s " *)
+
+          echo ">>> Creating manifest:"
+          echo "    $TAG_VERSIONED"
+          echo "    $TAG_LATEST"
+          echo ">>> From digests: $REFS"
+
+          docker buildx imagetools create \
+            -t "$TAG_VERSIONED" \
+            -t "$TAG_LATEST" \
+            $REFS
+
+      - name: Inspect pushed manifest
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          docker buildx imagetools inspect \
+            "${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-v${VERSION}"

@@ -6,6 +6,9 @@ registry: docker.io
 image_name: imprvai/imprv_pgvectorscale
 pg_version: '18'
 vectorscale_ref: '0.9.0'
-multiarch: 'false'
-push: 'false'
+
+# Note: multiarch / push are intentionally NOT defined here. They are runtime
+# flags, and putting them in this file makes pypyr.steps.fetchyaml overwrite
+# CLI overrides like `pypyr build multiarch=true`. Defaults are provided by
+# pypyr.steps.default in each pipeline (build.yaml, push.yaml, release.yaml).
 
