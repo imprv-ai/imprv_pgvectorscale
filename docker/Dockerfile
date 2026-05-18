@@ -5,7 +5,7 @@ ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
 
 # --- Stage 1: builder --------------------------------------------------------
-FROM pgvector/pgvector:0.8.1-pg18-trixie AS builder
+FROM pgvector/pgvector:0.8.2-pg18-trixie AS builder
 
 # Activate global ARG in this stage
 ARG VECTORSCALE_REF
@@ -14,19 +14,23 @@ ARG VCS_REF
 ARG BUILD_DATE
 
 # Install build dependencies
+# Note: rustc/cargo come from rustup below — Debian Trixie's apt rustc (1.85) is
+# too old for current pgvectorscale transitive deps (icu_* require >=1.86).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
     postgresql-server-dev-18 \
-    cargo \
-    rustc \
-    rustfmt \
     curl \
     jq \
     pkg-config \
     libssl-dev \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Install current stable Rust toolchain via rustup
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain stable --profile minimal --component rustfmt
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Update CA certificates and clone pgvectorscale
 RUN update-ca-certificates && \
@@ -51,7 +55,7 @@ RUN rm -rf /tmp/pgvectorscale
 
 
 # --- Stage 2: final runtime --------------------------------------------------
-FROM pgvector/pgvector:0.8.1-pg18-trixie
+FROM pgvector/pgvector:0.8.2-pg18-trixie
 
 # Activate global ARG in the final image
 ARG VECTORSCALE_REF
@@ -68,7 +72,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.source="https://github.com/imprv-ai/imprv_pgvectorscale"
 LABEL org.opencontainers.image.licenses="MIT"
 
-LABEL ai.imprv.pgvector.base="pgvector/pgvector:0.8.1-pg18-trixie"
+LABEL ai.imprv.pgvector.base="pgvector/pgvector:0.8.2-pg18-trixie"
 LABEL ai.imprv.pgvectorscale.ref="${VECTORSCALE_REF}"
 
 # Copy extension artifacts from builder (only for vectorscale)
