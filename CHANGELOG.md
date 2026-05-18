@@ -1,6 +1,14 @@
 ## v0.0.4 - 2026-05-18
 (changes since v0.0.3)
 
+- reduce the version to - 0.0.3 to produce new 0.0.4 after merge (bfe2c64)
+- ci: native-runner multi-arch release + fix pipeline flag clobbering (76b38f3)
+- bump to v.0.0.4 (524025a)
+- fix: broken instruction (79af632)
+
+## v0.0.4 - 2026-05-18
+(changes since v0.0.3)
+
 - fix: broken instruction (79af632)
 
 ## v0.0.3 - 2025-12-23
