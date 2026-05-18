@@ -1,3 +1,8 @@
+## v0.0.4 - 2026-05-18
+(changes since v0.0.3)
+
+- fix: broken instruction (79af632)
+
 ## v0.0.3 - 2025-12-23
 (changes since v0.0.1)
 
